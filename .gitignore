@@ -1,10 +1,14 @@
-*.iml
-.gradle
-/local.properties
-/.idea
-.DS_Store
-/build
+# Gradle / build output (build/ matches every module, e.g. app/build/)
+.gradle/
+build/
 /captures
 .externalNativeBuild
 .cxx
+
+# Local configuration (machine-specific SDK path)
 local.properties
+
+# IDE / OS
+.idea/
+*.iml
+.DS_Store
