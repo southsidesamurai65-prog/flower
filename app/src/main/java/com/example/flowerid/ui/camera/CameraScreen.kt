@@ -64,7 +64,9 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
+import com.example.flowerid.data.model.Candidate
 import com.example.flowerid.ui.IdentifyViewModel
+import com.example.flowerid.ui.result.ArchiveDialog
 import com.example.flowerid.ui.result.CandidateList
 import java.io.File
 
@@ -75,6 +77,7 @@ fun CameraScreen(
 ) {
     val context = LocalContext.current
     val state by viewModel.state.collectAsStateWithLifecycle()
+    var archiveCandidate by remember { mutableStateOf<Candidate?>(null) }
 
     LaunchedEffect(Unit) { viewModel.refreshApiKeyStatus() }
 
@@ -207,14 +210,56 @@ fun CameraScreen(
             }
         }
 
+        state.message?.let { message ->
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                ),
+            ) {
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = message,
+                        modifier = Modifier.weight(1f),
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    )
+                    TextButton(onClick = viewModel::consumeMessage) { Text("好的") }
+                }
+            }
+        }
+
         state.result?.let { result ->
             Text(
                 text = "识别结果 · ${result.modelUsed} · ${result.elapsedMs} ms",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
             )
-            CandidateList(payload = result.payload)
+            CandidateList(
+                payload = result.payload,
+                onArchive = { archiveCandidate = it },
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedButton(onClick = viewModel::reidentify, modifier = Modifier.weight(1f)) {
+                    Text("重新识别")
+                }
+                OutlinedButton(onClick = viewModel::reject, modifier = Modifier.weight(1f)) {
+                    Text("驳回")
+                }
+            }
         }
+    }
+
+    archiveCandidate?.let { candidate ->
+        ArchiveDialog(
+            candidate = candidate,
+            onDismiss = { archiveCandidate = null },
+            onConfirm = { edited ->
+                archiveCandidate = null
+                viewModel.archive(edited)
+            },
+        )
     }
 }
 

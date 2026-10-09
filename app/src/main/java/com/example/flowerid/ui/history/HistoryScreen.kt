@@ -20,11 +20,17 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -43,6 +49,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.example.flowerid.data.local.HistoryItem
 import com.example.flowerid.data.model.IdentifyPayload
+import com.example.flowerid.data.model.PlantTags
+import com.example.flowerid.data.repo.HistoryFilter
 import com.example.flowerid.ui.result.CandidateList
 import java.io.File
 import java.text.SimpleDateFormat
@@ -52,26 +60,34 @@ import java.util.Locale
 @Composable
 fun HistoryScreen(viewModel: HistoryViewModel = viewModel()) {
     val items by viewModel.items.collectAsStateWithLifecycle()
+    val filters by viewModel.filters.collectAsStateWithLifecycle()
+    val categories by viewModel.categories.collectAsStateWithLifecycle()
     var detail by remember { mutableStateOf<IdentifyPayload?>(null) }
 
-    if (items.isEmpty()) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("还没有识别记录", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        return
-    }
+    Column(modifier = Modifier.fillMaxSize()) {
+        FilterPanel(filters = filters, categories = categories, viewModel = viewModel)
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        items(items, key = { it.id }) { item ->
-            HistoryRow(
-                item = item,
-                onClick = { detail = viewModel.detail(item) },
-                onDelete = { viewModel.delete(item.id) },
-            )
+        if (items.isEmpty()) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text(
+                    text = if (filters.isEmpty) "还没有归档记录" else "没有符合筛选条件的记录",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                items(items, key = { it.id }) { item ->
+                    HistoryRow(
+                        item = item,
+                        onClick = { detail = viewModel.detail(item) },
+                        onDelete = { viewModel.delete(item.id) },
+                    )
+                }
+            }
         }
     }
 
@@ -92,6 +108,113 @@ fun HistoryScreen(viewModel: HistoryViewModel = viewModel()) {
                 }
             },
         )
+    }
+}
+
+@Composable
+private fun FilterPanel(
+    filters: HistoryFilter,
+    categories: List<String>,
+    viewModel: HistoryViewModel,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val active = activeCount(filters)
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { expanded = !expanded },
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Filled.FilterList, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = if (active == 0) "筛选：全部" else "筛选：已选 $active 项",
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.weight(1f),
+                )
+                if (active > 0) {
+                    TextButton(onClick = viewModel::clearFilters) { Text("清空") }
+                }
+                Icon(
+                    imageVector = if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                    contentDescription = if (expanded) "收起" else "展开",
+                )
+            }
+
+            if (expanded) {
+                Spacer(Modifier.size(8.dp))
+                Column(
+                    modifier = Modifier
+                        .heightIn(max = 320.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Text("分类", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+                    FilterDropdown("科", categories, filters.category, viewModel::setCategory)
+
+                    Text("叶", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+                    FilterDropdown("叶性", PlantTags.LEAF_FORMS, filters.leafForm, viewModel::setLeafForm)
+                    FilterDropdown("叶形", PlantTags.LEAF_SHAPES, filters.leafShape, viewModel::setLeafShape)
+                    FilterDropdown("叶序", PlantTags.LEAF_ARRANGEMENTS, filters.leafArrangement, viewModel::setLeafArrangement)
+                    FilterDropdown("叶缘", PlantTags.LEAF_MARGINS, filters.leafMargin, viewModel::setLeafMargin)
+
+                    Text("花", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+                    FilterDropdown("花冠形状", PlantTags.FLOWER_SHAPES, filters.flowerShape, viewModel::setFlowerShape)
+                    FilterDropdown("花序类型", PlantTags.INFLORESCENCES, filters.inflorescence, viewModel::setInflorescence)
+                    FilterDropdown("子房位置", PlantTags.OVARY_POSITIONS, filters.ovaryPosition, viewModel::setOvaryPosition)
+
+                    Text("果", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+                    FilterDropdown("果实类型", PlantTags.FRUIT_TYPES, filters.fruitType, viewModel::setFruitType)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FilterDropdown(
+    label: String,
+    options: List<String>,
+    value: String?,
+    onValueChange: (String?) -> Unit,
+) {
+    var open by remember { mutableStateOf(false) }
+    Column {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Box(modifier = Modifier.fillMaxWidth()) {
+            OutlinedButton(onClick = { open = true }, modifier = Modifier.fillMaxWidth()) {
+                Text(text = value ?: "全部", maxLines = 1)
+            }
+            DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+                DropdownMenuItem(
+                    text = { Text("全部") },
+                    onClick = {
+                        open = false
+                        onValueChange(null)
+                    },
+                )
+                options.forEach { option ->
+                    DropdownMenuItem(
+                        text = { Text(option) },
+                        onClick = {
+                            open = false
+                            onValueChange(option)
+                        },
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -126,6 +249,20 @@ private fun HistoryRow(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                val tagLine = listOfNotNull(
+                    item.category.takeIf { it.isNotBlank() },
+                    item.leafForm.takeIf { it.isNotBlank() },
+                    item.leafShape.takeIf { it.isNotBlank() },
+                    item.flowerShape.takeIf { it.isNotBlank() },
+                    item.fruitType.takeIf { it.isNotBlank() },
+                ).joinToString(" · ")
+                if (tagLine.isNotBlank()) {
+                    Text(
+                        text = tagLine,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
                 Text(
                     text = item.modelUsed,
                     style = MaterialTheme.typography.labelSmall,
@@ -138,6 +275,11 @@ private fun HistoryRow(
         }
     }
 }
+
+private fun activeCount(filters: HistoryFilter): Int = listOf(
+    filters.category, filters.leafForm, filters.leafShape, filters.leafArrangement, filters.leafMargin,
+    filters.flowerShape, filters.inflorescence, filters.ovaryPosition, filters.fruitType,
+).count { !it.isNullOrBlank() }
 
 private fun formatTime(millis: Long): String =
     SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(millis))

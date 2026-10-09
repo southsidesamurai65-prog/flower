@@ -6,9 +6,11 @@ import com.example.flowerid.data.api.ApiException
 import com.example.flowerid.data.api.VisionApi
 import com.example.flowerid.data.local.HistoryDao
 import com.example.flowerid.data.local.HistoryItem
+import com.example.flowerid.data.model.Candidate
 import com.example.flowerid.data.model.IdentifyPayload
 import com.example.flowerid.data.model.IdentifyResult
 import com.example.flowerid.data.model.MissingApiKeyException
+import com.example.flowerid.data.model.PlantTags
 import com.example.flowerid.security.ApiKeyStore
 import com.example.flowerid.util.ImageUtils
 import kotlinx.coroutines.Dispatchers
@@ -22,6 +24,7 @@ class IdentifyRepository(
     private val historyDao: HistoryDao,
 ) {
 
+    /** Runs identification only; the result is not persisted until the user archives a candidate. */
     suspend fun identify(uris: List<Uri>): IdentifyResult = withContext(Dispatchers.IO) {
         require(uris.isNotEmpty()) { "请先拍摄或选择至少一张照片" }
         val apiKey = keyStore.getApiKey() ?: throw MissingApiKeyException()
@@ -46,29 +49,41 @@ class IdentifyRepository(
         }
 
         val payload = PayloadParser.parse(raw)
-        val result = IdentifyResult(
+        IdentifyResult(
             payload = payload,
             modelUsed = modelUsed,
             elapsedMs = System.currentTimeMillis() - start,
         )
-        saveHistory(uris.first(), payload, result)
-        result
     }
 
-    private suspend fun saveHistory(first: Uri, payload: IdentifyPayload, result: IdentifyResult) {
-        runCatching {
-            val createdAt = System.currentTimeMillis()
-            val thumb = writeThumbnail(first, createdAt)
-            historyDao.insert(
-                HistoryItem(
-                    createdAt = createdAt,
-                    thumbPath = thumb,
-                    title = payload.candidates.firstOrNull()?.name?.ifBlank { "未识别" } ?: "未识别",
-                    resultJson = PayloadParser.toJson(payload),
-                    modelUsed = result.modelUsed,
-                ),
-            )
-        }
+    /** Persists the user-chosen candidate (with its normalized tags) as an archived history entry. */
+    suspend fun archive(
+        firstImage: Uri,
+        payload: IdentifyPayload,
+        candidate: Candidate,
+        modelUsed: String,
+    ): Long = withContext(Dispatchers.IO) {
+        val createdAt = System.currentTimeMillis()
+        val thumb = writeThumbnail(firstImage, createdAt)
+        historyDao.insert(
+            HistoryItem(
+                createdAt = createdAt,
+                thumbPath = thumb,
+                title = candidate.name.ifBlank { "未识别" },
+                scientificName = candidate.scientificName,
+                category = PlantTags.normalizeFamily(candidate.family),
+                leafForm = PlantTags.normalize(candidate.tags.leafForm, PlantTags.LEAF_FORMS),
+                leafShape = PlantTags.normalize(candidate.tags.leafShape, PlantTags.LEAF_SHAPES),
+                leafArrangement = PlantTags.normalize(candidate.tags.leafArrangement, PlantTags.LEAF_ARRANGEMENTS),
+                leafMargin = PlantTags.normalize(candidate.tags.leafMargin, PlantTags.LEAF_MARGINS),
+                flowerShape = PlantTags.normalize(candidate.tags.flowerShape, PlantTags.FLOWER_SHAPES),
+                inflorescence = PlantTags.normalize(candidate.tags.inflorescence, PlantTags.INFLORESCENCES),
+                ovaryPosition = PlantTags.normalize(candidate.tags.ovaryPosition, PlantTags.OVARY_POSITIONS),
+                fruitType = PlantTags.normalize(candidate.tags.fruitType, PlantTags.FRUIT_TYPES),
+                resultJson = PayloadParser.toJson(payload),
+                modelUsed = modelUsed,
+            ),
+        )
     }
 
     private fun writeThumbnail(uri: Uri, createdAt: Long): String {

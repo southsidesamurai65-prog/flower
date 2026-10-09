@@ -10,6 +10,18 @@ data class Confusable(
 )
 
 @Serializable
+data class CandidateTags(
+    @SerialName("leaf_form") val leafForm: String = "",
+    @SerialName("leaf_shape") val leafShape: String = "",
+    @SerialName("leaf_arrangement") val leafArrangement: String = "",
+    @SerialName("leaf_margin") val leafMargin: String = "",
+    @SerialName("flower_shape") val flowerShape: String = "",
+    val inflorescence: String = "",
+    @SerialName("ovary_position") val ovaryPosition: String = "",
+    @SerialName("fruit_type") val fruitType: String = "",
+)
+
+@Serializable
 data class Candidate(
     val name: String = "",
     @SerialName("scientific_name") val scientificName: String = "",
@@ -19,6 +31,7 @@ data class Candidate(
     val aliases: List<String> = emptyList(),
     val features: List<String> = emptyList(),
     @SerialName("confusable_with") val confusableWith: List<Confusable> = emptyList(),
+    val tags: CandidateTags = CandidateTags(),
     val reasoning: String = "",
 )
 

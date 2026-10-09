@@ -22,8 +22,19 @@ OpenCode Go OpenAI-compatible chat-completions endpoint for vision identificatio
 - `app/build/` is untracked and **not** ignored (`.gitignore` only ignores root `/build`). Never
   commit build output.
 - Release build has no signing config; only debug builds are runnable.
-- Room DB `flowerid.db` uses `fallbackToDestructiveMigration()`. Changing `HistoryItem` fields
-  without bumping `@Database(version = ...)` silently wipes history.
+- Room DB `flowerid.db` uses `fallbackToDestructiveMigration()`. It is at `@Database(version = 2)`.
+  Changing `HistoryItem` fields without bumping the version silently wipes history (and the
+  fallback already wipes on any mismatch).
+- Identify does **not** persist automatically: history is written only when the user archives a
+  candidate (`IdentifyRepository.archive`), so don't re-add a save inside `identify()`.
+- Tag vocabularies are fixed and centralized in `data/model/PlantTags.kt` (leaf form/shape/arrangement/
+  margin, flower shape, inflorescence, ovary position, fruit type). `prompt/Prompts.kt` renders its
+  option lists from `PlantTags`; add a new value/dimension in one place only. Family (科) is not
+  enumerated — history filter options come from `SELECT DISTINCT category`. Model values are snapped
+  onto the lists via `PlantTags.normalize` (unknown → `其他`); `PlantTags.normalizeFamily` strips the
+  Latin suffix from `Candidate.family`.
+- `Candidate.tags` is the nested `CandidateTags` object (`@SerialName` snake_case). `PayloadParser`
+  tolerates missing tags (all fields default to ""), so old JSON still decodes.
 - API key + settings live in `EncryptedSharedPreferences` (`security/ApiKeyStore.kt`), never in
   `BuildConfig` or source. Do not hardcode any secret.
 - Endpoint is hardcoded: `VisionApi.GO_ENDPOINT` = `https://opencode.ai/zen/go/v1/chat/completions`.
@@ -38,6 +49,9 @@ OpenCode Go OpenAI-compatible chat-completions endpoint for vision identificatio
   `(app as FlowerIdApp).container`.
 - `MainActivity` → `ui/MainScaffold.kt` (Compose Navigation, tabs: camera / history / settings).
 - Flow: `ui/camera/CameraScreen` → `IdentifyViewModel.identify()` → `IdentifyRepository`
-  (compress with `util/ImageUtils` → call `data/api/VisionApi` → parse → persist) → Room.
-- Identify accepts max 3 images. History stores the payload JSON plus a 320px thumbnail of only
-  the first image (`filesDir/thumbs`).
+  (compress with `util/ImageUtils` → call `data/api/VisionApi` → parse) → result is held in state.
+  The user then verifies via `util/PlantLinks` (opens PPBC / iPlant / Baidu Baike), archives a
+  candidate through `ArchiveDialog` (`IdentifyViewModel.archive` → Room), or rejects/re-identifies.
+- Identify accepts max 3 images. `HistoryItem` stores the chosen candidate's normalized tags plus
+  the full payload JSON and a 320px thumbnail of only the first image (`filesDir/thumbs`). History
+  filters by the 9 tag columns (see `data/repo/HistoryRepository.kt` `HistoryFilter`).

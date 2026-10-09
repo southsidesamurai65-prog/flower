@@ -6,6 +6,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.flowerid.FlowerIdApp
 import com.example.flowerid.data.api.ApiException
+import com.example.flowerid.data.model.Candidate
 import com.example.flowerid.data.model.IdentifyResult
 import com.example.flowerid.data.model.MissingApiKeyException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -20,6 +21,7 @@ data class IdentifyUiState(
     val loading: Boolean = false,
     val result: IdentifyResult? = null,
     val error: String? = null,
+    val message: String? = null,
     val hasApiKey: Boolean = false,
 )
 
@@ -66,7 +68,7 @@ class IdentifyViewModel(app: Application) : AndroidViewModel(app) {
             _state.update { it.copy(error = "请先在「设置」中填写 OpenCode Go API Key", hasApiKey = false) }
             return
         }
-        _state.update { it.copy(loading = true, error = null) }
+        _state.update { it.copy(loading = true, error = null, message = null) }
         viewModelScope.launch {
             try {
                 val result = container.identifyRepository.identify(uris)
@@ -81,6 +83,45 @@ class IdentifyViewModel(app: Application) : AndroidViewModel(app) {
                 _state.update { it.copy(loading = false, error = "识别失败：${e.message ?: "未知错误"}") }
             }
         }
+    }
+
+    /** Persists the chosen candidate and starts a fresh capture. */
+    fun archive(candidate: Candidate) {
+        val current = _state.value
+        val result = current.result ?: return
+        val first = current.selected.firstOrNull() ?: return
+        viewModelScope.launch {
+            try {
+                container.identifyRepository.archive(first, result.payload, candidate, result.modelUsed)
+                _state.update {
+                    it.copy(
+                        result = null,
+                        selected = emptyList(),
+                        error = null,
+                        message = "已归档：${candidate.name.ifBlank { "未识别" }}",
+                    )
+                }
+            } catch (e: Exception) {
+                _state.update { it.copy(error = "归档失败：${e.message ?: "未知错误"}") }
+            }
+        }
+    }
+
+    /** Discards the current result but keeps the selected photos so the user can adjust and retry. */
+    fun reject() {
+        _state.update {
+            it.copy(result = null, error = null, message = "已驳回，可重拍或换图后重新识别")
+        }
+    }
+
+    /** Re-runs identification on the same photos. */
+    fun reidentify() {
+        _state.update { it.copy(result = null) }
+        identify()
+    }
+
+    fun consumeMessage() {
+        _state.update { it.copy(message = null) }
     }
 
     private fun describeApiError(e: ApiException): String = when (e.code) {
