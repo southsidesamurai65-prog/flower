@@ -6,11 +6,11 @@
 - CameraX 拍照 + 相册导入（最多 3 张，可拍花 / 叶 / 果不同部位）
 - 结果：中文名、拉丁学名、置信度、科、属、别名、判断依据、易混淆种、推理
 - 本地历史记录（Room，含缩略图），可查看详情 / 删除
-- 设置：API Key（加密存储）、模型、图片压缩参数
+- 设置：API Key（加密存储）、接口地址、模型、图片压缩参数
 - 严格 JSON 结构化输出；主模型不接受图片时自动回退 `deepseek-v4-flash-vision-exp`
 
 ## 接口
-- Endpoint：`https://opencode.ai/zen/go/v1/chat/completions`
+- Endpoint：默认 `https://opencode.ai/zen/go/v1/chat/completions`，可在设置中改为任意 OpenAI 兼容接口（地址原样使用，请填完整 URL）
 - 模型：`deepseek-v4.1-flash`
 - 鉴权：`Authorization: Bearer <OpenCode Go API Key>`
 - 兼容 OpenAI Chat Completions；图片通过 `content` 数组的 `image_url` + base64 data URL 传入

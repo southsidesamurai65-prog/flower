@@ -21,13 +21,12 @@ import java.util.UUID
 import java.util.concurrent.TimeUnit
 
 /**
- * Thin client for the OpenCode Go (OpenAI-compatible) chat completions endpoint.
+ * Thin client for OpenAI-compatible chat-completions endpoints and Anthropic Messages endpoints.
  *
- * Endpoint: https://opencode.ai/zen/go/v1/chat/completions
- * Model:    deepseek-v4.1-flash (vision capable)
+ * The request format is chosen from the URL: paths ending in `/messages` use the Anthropic
+ * Messages API, everything else uses OpenAI chat completions.
  */
 class VisionApi(
-    private val endpoint: String = GO_ENDPOINT,
     private val userAgent: String = "FlowerID/1.0",
 ) {
     private val json = Json {
@@ -51,8 +50,47 @@ class VisionApi(
         apiKey: String,
         model: String,
         imagesBase64: List<String>,
+        endpoint: String = GO_ENDPOINT,
+        maxTokens: Int = ANTHROPIC_MAX_TOKENS,
         mime: String = "image/jpeg",
     ): String = withContext(Dispatchers.IO) {
+        val anthropic = isAnthropic(endpoint)
+        val body = if (anthropic) {
+            buildAnthropicBody(model, imagesBase64, mime, maxTokens)
+        } else {
+            buildOpenAiBody(model, imagesBase64, mime)
+        }
+
+        val request = Request.Builder()
+            .url(endpoint)
+            .header("Content-Type", "application/json")
+            .header("User-Agent", userAgent)
+            .apply {
+                if (anthropic) {
+                    // Support both the official Anthropic header and proxies that expect a
+                    // bearer token (e.g. ANTHROPIC_AUTH_TOKEN).
+                    header("x-api-key", apiKey)
+                    header("anthropic-version", ANTHROPIC_VERSION)
+                    header("Authorization", "Bearer $apiKey")
+                } else {
+                    header("Authorization", "Bearer $apiKey")
+                    header("x-opencode-session", sessionId)
+                }
+            }
+            .post(body.toString().toRequestBody(JSON_MEDIA))
+            .build()
+
+        client.newCall(request).execute().use { response ->
+            val text = response.body?.string().orEmpty()
+            if (!response.isSuccessful) throw ApiException(response.code, text)
+            if (anthropic) extractAnthropicContent(text) else extractOpenAiContent(text)
+        }
+    }
+
+    private fun isAnthropic(endpoint: String): Boolean =
+        endpoint.substringBefore('?').trimEnd('/').endsWith("/messages", ignoreCase = true)
+
+    private fun buildOpenAiBody(model: String, imagesBase64: List<String>, mime: String): String {
         val content = buildJsonArray {
             addJsonObject {
                 put("type", "text")
@@ -69,7 +107,7 @@ class VisionApi(
             }
         }
 
-        val body = buildJsonObject {
+        return buildJsonObject {
             put("model", model)
             put("temperature", 0.2)
             put("stream", false)
@@ -84,25 +122,47 @@ class VisionApi(
                     put("content", content)
                 }
             })
-        }
-
-        val request = Request.Builder()
-            .url(endpoint)
-            .header("Authorization", "Bearer $apiKey")
-            .header("Content-Type", "application/json")
-            .header("x-opencode-session", sessionId)
-            .header("User-Agent", userAgent)
-            .post(body.toString().toRequestBody(JSON_MEDIA))
-            .build()
-
-        client.newCall(request).execute().use { response ->
-            val text = response.body?.string().orEmpty()
-            if (!response.isSuccessful) throw ApiException(response.code, text)
-            extractContent(text)
-        }
+        }.toString()
     }
 
-    private fun extractContent(raw: String): String {
+    private fun buildAnthropicBody(
+        model: String,
+        imagesBase64: List<String>,
+        mime: String,
+        maxTokens: Int,
+    ): String {
+        val content = buildJsonArray {
+            addJsonObject {
+                put("type", "text")
+                put("text", Prompts.userText(imagesBase64.size))
+            }
+            imagesBase64.forEach { b64 ->
+                addJsonObject {
+                    put("type", "image")
+                    putJsonObject("source") {
+                        put("type", "base64")
+                        put("media_type", mime)
+                        put("data", b64)
+                    }
+                }
+            }
+        }
+
+        return buildJsonObject {
+            put("model", model)
+            put("max_tokens", maxTokens)
+            put("temperature", 0.2)
+            put("system", Prompts.SYSTEM)
+            put("messages", buildJsonArray {
+                addJsonObject {
+                    put("role", "user")
+                    put("content", content)
+                }
+            })
+        }.toString()
+    }
+
+    private fun extractOpenAiContent(raw: String): String {
         val root = json.parseToJsonElement(raw).jsonObject
         val choices = root["choices"]?.jsonArray
             ?: throw IOException("响应缺少 choices 字段：${raw.take(300)}")
@@ -118,8 +178,31 @@ class VisionApi(
         }
     }
 
+    private fun extractAnthropicContent(raw: String): String {
+        val root = json.parseToJsonElement(raw).jsonObject
+        val content = root["content"]?.jsonArray
+            ?: throw IOException("响应缺少 content 字段：${raw.take(300)}")
+        val text = content.joinToString("") { part ->
+            val obj = part.jsonObject
+            // Skip thinking/reasoning blocks; accept text blocks even if `type` is missing.
+            if (obj["thinking"] != null) "" else obj["text"]?.jsonPrimitive?.content.orEmpty()
+        }
+        if (text.isNotBlank()) return text
+
+        val stop = root["stop_reason"]?.jsonPrimitive?.content
+        val hasThinking = content.any { it.jsonObject["thinking"] != null }
+        val hint = if (hasThinking) {
+            "模型只返回了思考内容、没有最终答案（max_tokens 可能被思考耗尽），请调高「最大输出 tokens」"
+        } else {
+            "响应 content 没有文本"
+        }
+        throw IOException("$hint（stop_reason=${stop ?: "未知"}）：${raw.take(300)}")
+    }
+
     companion object {
         const val GO_ENDPOINT = "https://opencode.ai/zen/go/v1/chat/completions"
+        private const val ANTHROPIC_VERSION = "2023-06-01"
+        private const val ANTHROPIC_MAX_TOKENS = 8192
         private val JSON_MEDIA = "application/json; charset=utf-8".toMediaType()
     }
 }

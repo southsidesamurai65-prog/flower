@@ -37,7 +37,14 @@ OpenCode Go OpenAI-compatible chat-completions endpoint for vision identificatio
   tolerates missing tags (all fields default to ""), so old JSON still decodes.
 - API key + settings live in `EncryptedSharedPreferences` (`security/ApiKeyStore.kt`), never in
   `BuildConfig` or source. Do not hardcode any secret.
-- Endpoint is hardcoded: `VisionApi.GO_ENDPOINT` = `https://opencode.ai/zen/go/v1/chat/completions`.
+- Default endpoint is `VisionApi.GO_ENDPOINT` (`https://opencode.ai/zen/go/v1/chat/completions`),
+  but it is user-configurable (`ApiKeyStore.getEndpoint` / Settings). The URL is used **verbatim**
+  (no normalization/appending). If the path ends with `/messages`, `VisionApi` uses the Anthropic
+  Messages format (`x-api-key` + `anthropic-version`, required `max_tokens`, base64 `image` blocks,
+  parses `content[].text`); otherwise it uses OpenAI chat-completions. Anthropic `max_tokens` comes
+  from `ApiKeyStore.getMaxTokens` (default 8192) and **thinking blocks count toward it** — a
+  thinking-only reply means the budget was exhausted before the answer. The OpenCode-only fallback
+  model is only attempted on the default endpoint.
 - Default model `deepseek-v4.1-flash`; `IdentifyRepository` retries `deepseek-v4-flash-vision-exp`
   only on HTTP 400/404/422.
 - Model reply is strict JSON mapped in `data/model/Models.kt` via kotlinx.serialization

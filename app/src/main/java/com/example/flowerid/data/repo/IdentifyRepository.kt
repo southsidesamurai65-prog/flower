@@ -34,15 +34,19 @@ class IdentifyRepository(
         val images = uris.map { ImageUtils.toJpegBase64(context, it, maxEdge, quality) }
 
         val primaryModel = keyStore.getModel()
+        val endpoint = keyStore.getEndpoint()
+        val maxTokens = keyStore.getMaxTokens()
         val start = System.currentTimeMillis()
 
         val (raw, modelUsed) = try {
-            api.identify(apiKey, primaryModel, images) to primaryModel
+            api.identify(apiKey, primaryModel, images, endpoint, maxTokens) to primaryModel
         } catch (e: ApiException) {
-            val canFallback = primaryModel != ApiKeyStore.FALLBACK_MODEL &&
+            val canFallback = endpoint == VisionApi.GO_ENDPOINT &&
+                primaryModel != ApiKeyStore.FALLBACK_MODEL &&
                 (e.code == 400 || e.code == 404 || e.code == 422)
             if (canFallback) {
-                api.identify(apiKey, ApiKeyStore.FALLBACK_MODEL, images) to ApiKeyStore.FALLBACK_MODEL
+                api.identify(apiKey, ApiKeyStore.FALLBACK_MODEL, images, endpoint, maxTokens) to
+                    ApiKeyStore.FALLBACK_MODEL
             } else {
                 throw e
             }

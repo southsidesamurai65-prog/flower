@@ -3,6 +3,7 @@ package com.example.flowerid.security
 import android.content.Context
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import com.example.flowerid.data.api.VisionApi
 
 /** Stores the OpenCode Go API key and user preferences in encrypted shared prefs. */
 class ApiKeyStore(context: Context) {
@@ -29,6 +30,14 @@ class ApiKeyStore(context: Context) {
         prefs.edit().putString(KEY_MODEL, value.trim().ifBlank { DEFAULT_MODEL }).apply()
     }
 
+    /** OpenAI-compatible chat-completions URL. Blank falls back to [DEFAULT_ENDPOINT]. */
+    fun getEndpoint(): String =
+        prefs.getString(KEY_ENDPOINT, null)?.takeIf { it.isNotBlank() } ?: DEFAULT_ENDPOINT
+
+    fun setEndpoint(value: String) {
+        prefs.edit().putString(KEY_ENDPOINT, value.trim().ifBlank { DEFAULT_ENDPOINT }).apply()
+    }
+
     fun getQuality(): Int = prefs.getInt(KEY_QUALITY, 85)
 
     fun setQuality(value: Int) {
@@ -41,14 +50,25 @@ class ApiKeyStore(context: Context) {
         prefs.edit().putInt(KEY_MAX_EDGE, value.coerceIn(480, 2048)).apply()
     }
 
+    /** Max output tokens for Anthropic-style requests (thinking tokens count toward this). */
+    fun getMaxTokens(): Int = prefs.getInt(KEY_MAX_TOKENS, DEFAULT_MAX_TOKENS)
+
+    fun setMaxTokens(value: Int) {
+        prefs.edit().putInt(KEY_MAX_TOKENS, value.coerceIn(1024, 32768)).apply()
+    }
+
     companion object {
         const val DEFAULT_MODEL = "deepseek-v4.1-flash"
         const val FALLBACK_MODEL = "deepseek-v4-flash-vision-exp"
+        val DEFAULT_ENDPOINT: String = VisionApi.GO_ENDPOINT
+        const val DEFAULT_MAX_TOKENS = 8192
 
         private const val FILE_NAME = "flowerid_secure"
         private const val KEY_API = "opencode_api_key"
         private const val KEY_MODEL = "model"
+        private const val KEY_ENDPOINT = "endpoint"
         private const val KEY_QUALITY = "quality"
         private const val KEY_MAX_EDGE = "max_edge"
+        private const val KEY_MAX_TOKENS = "max_tokens"
     }
 }

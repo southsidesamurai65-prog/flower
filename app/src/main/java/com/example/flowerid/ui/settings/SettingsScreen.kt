@@ -23,6 +23,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -36,7 +37,6 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.flowerid.data.api.VisionApi
 import com.example.flowerid.security.ApiKeyStore
 
 private val PRESET_MODELS = listOf(
@@ -81,6 +81,23 @@ fun SettingsScreen(viewModel: SettingsViewModel = viewModel()) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 
+        Text("接口地址", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        OutlinedTextField(
+            value = state.endpoint,
+            onValueChange = viewModel::setEndpoint,
+            label = { Text("Chat Completions URL") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Text(
+            text = "地址会原样使用，不做任何拼接或补全。以 /messages 结尾时按 Anthropic 协议发送，其余按 OpenAI Chat Completions；模型 ID 需与该接口匹配。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        TextButton(
+            onClick = { viewModel.setEndpoint(ApiKeyStore.DEFAULT_ENDPOINT) },
+        ) { Text("恢复默认") }
+
         Text("模型", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             PRESET_MODELS.forEach { model ->
@@ -120,6 +137,19 @@ fun SettingsScreen(viewModel: SettingsViewModel = viewModel()) {
             steps = 11,
         )
 
+        Text("最大输出 tokens：${state.maxTokens}", style = MaterialTheme.typography.bodyMedium)
+        Slider(
+            value = state.maxTokens.toFloat(),
+            onValueChange = { viewModel.setMaxTokens(it.toInt()) },
+            valueRange = 1024f..32768f,
+            steps = 30,
+        )
+        Text(
+            text = "仅 Anthropic 接口使用；思考内容也计入该上限，若只返回 thinking 没有正文就调高它。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+
         Button(onClick = viewModel::save, modifier = Modifier.fillMaxWidth()) {
             Icon(Icons.Filled.Save, contentDescription = null)
             Spacer(Modifier.height(0.dp))
@@ -131,9 +161,9 @@ fun SettingsScreen(viewModel: SettingsViewModel = viewModel()) {
 
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(12.dp)) {
-                Text("接口信息", style = MaterialTheme.typography.labelLarge)
+                Text("当前请求地址（原样使用）", style = MaterialTheme.typography.labelLarge)
                 Text(
-                    text = VisionApi.GO_ENDPOINT,
+                    text = state.endpoint,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
